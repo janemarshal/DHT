@@ -1,0 +1,29 @@
+module src;
+
+import object javasrc.ChordKey;
+
+behavior FingerTable{
+    Finger[] fingers;// = new Finger[10];
+    FingerTable(ChordNode node) {
+        self.fingers = new Finger[32];//i[Hash.KEY_LENGTH];
+        for ( int i= 0; i < fingers.length ; i++) {
+            token ChordKey start = self<-getStartKey(node<-getNodeKey(), i); //this needs to be message passing because ChordNode is an actor
+            self<-createFinger(start, node, i);
+        }
+    }
+
+    ack createFinger(ChordKey start, ChordNode node, int i){
+        //			System.out.println(start.toString());
+        start = start.createStartKey(i);
+        fingers[i] = new Finger( start, node);
+    }
+
+
+    ChordKey getStartKey(ChordKey key, int i){
+        pass key.createStartKey(i);
+    }
+
+    Finger getFinger(int i) {
+        pass fingers[i];
+    }
+}

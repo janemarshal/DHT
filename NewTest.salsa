@@ -1,0 +1,33 @@
+module src;
+
+import salsa_lite.language.JoinDirector;
+import salsa_lite.runtime.io.StandardOutput;
+import object java.io.PrintStream;
+
+import object java.util.ArrayList;
+import salsa_lite.runtime.wwc.NameServer;
+
+behavior NewTest extends MobileActor {
+    NewTest(String[] ar) {
+
+        ArrayList<String> hosts = new ArrayList<String>();
+        ArrayList<Integer> ports = new ArrayList<Integer>();
+        NameServer ns = self.getNameServer();
+        hosts.add("127.0.0.1");
+        ports.add(4040);
+        hosts.add("127.0.0.1");
+        ports.add(4041);
+        hosts.add("127.0.0.1");
+        ports.add(4042);
+        hosts.add("127.0.0.1");
+        ports.add(4043);
+        hosts.add("127.0.0.1");
+        ports.add(4044);
+
+        StandardOutput output = new StandardOutput();
+        JoinDirector jd = new JoinDirector();
+        new StandardOutput()<-println("Start")@
+        DHashTable dht = new DHashTable(hosts,ports) called ("RemoteHash") using (ns)@
+//        output<-println("Enter 1 to continue")@
+    }
+   }

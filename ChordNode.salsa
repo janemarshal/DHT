@@ -1,0 +1,241 @@
+module src;
+
+import object java.io.PrintStream;
+import object javasrc.ChordKey;
+import salsa_lite.runtime.io.StandardOutput;
+import object java.util.Hashtable;
+
+behavior ChordNode extends MobileActor{
+
+    String nodeId;
+    ChordKey nodeKey;
+    ChordNode predecessor;
+    ChordNode successor;
+    FingerTable fingerTable;
+    boolean success = false;
+    StandardOutput origin_output;
+    StandardOutput local_output;
+    Hashtable<ChordKey, String> local;
+    int count = 0;
+    
+       ack go() {
+       new StandardOutput()<-println("Hello from: " + self.getName() + "!") @
+       origin_output<-println("Remote hello from: " + self.getName() + "!");
+       }
+
+    ChordNode(StandardOutput out){
+        self.origin_output = out;
+        self.local_output = new StandardOutput();
+        self.nodeKey = new ChordKey(self.getName());
+        out<-println(self.getName() + "...." + self.nodeKey);
+        self.nodeId = nodeKey.toString();
+        self.fingerTable = new FingerTable(self);
+        self.local = new Hashtable<ChordKey, String>();
+        self<-create();
+    }
+
+    ack create() {
+        predecessor = null;
+        successor = self;
+    }
+
+    ack put(ChordKey key,String value) {
+        local.put(key, value);
+        local_output<-println(++count + " Storing " + key);
+    }
+
+    ack stabilize() {
+    System.out.println(" \n\n");
+        System.out.println("Stabilizing " + self.getName());
+        token ChordNode node = successor<-getPredecessor();
+        self<-stabilize(node);
+    }
+
+    ack stabilize(ChordNode node){
+        if (node != null) {
+            System.out.println("Succ Pred is + " + node.getName());
+            token ChordKey key = node<-getNodeKey();
+            token ChordKey selfKey = self<-getNodeKey();
+            token ChordKey successorKey = successor<-getNodeKey();
+            pass self<-stabilize(key, selfKey, successorKey,node);
+        }
+        successor<-notifyPredecessor(self);
+    }
+
+    ack stabilize(ChordKey key, ChordKey selfKey, ChordKey successorKey, ChordNode node){
+        if ((self == successor)
+                || key.isBetween(selfKey, successorKey)) {
+            successor = node;
+        }
+    }
+
+    ack notifyPredecessor(ChordNode node) {
+        if(predecessor != null){
+            System.out.println("Predecessor is + " + node.getName());
+            token ChordKey predecessorKey = predecessor<-getNodeKey();
+            token ChordKey key = node<-getNodeKey();
+            token ChordKey selfKey = self<-getNodeKey();
+            self<-notifyPredecessor(node,key,selfKey, predecessorKey);
+        }
+        else 
+            predecessor = node;                    
+    }
+
+    ack notifyPredecessor(ChordNode node, ChordKey key, ChordKey selfKey, ChordKey predecessorKey){       
+        if(key.isBetween(predecessorKey, selfKey)) {
+            System.out.println("Pred Node is + " + node.getName());
+            predecessor = node;
+        }
+    }
+
+    ack fixFingers() {
+        for (int i = 0; i < 32/*Hash.KEY_LENGTH*/; i++) {
+            token Finger finger = fingerTable<-getFinger(i);
+            token ChordKey key = finger<-getStart();
+            token ChordNode successorNode = self<-findSuccessor(key);
+            self<-setSuccessorNode(finger, successorNode);
+        }
+    }
+
+    ack joinNode(ChordNode rootNode){
+        predecessor = null;
+        ChordKey key = new ChordKey(self.getName());
+        token ChordNode successor = rootNode<-findSuccessor(key);
+        self<-joinSuccessor(successor) @
+        local_output<-println("node is  " + self.getName()) @
+        local_output<-println("Succesor  " + successor) @
+        local_output<-println("Predecesor  " + predecessor) @
+        pass;
+    }
+
+    ack joinSuccessor(ChordNode successor){
+        self.successor = successor;
+    }
+
+    ChordNode findSuccessor(String/*int*/ nodeName) {
+        ChordKey key = new ChordKey(nodeName);
+        System.out.println("ChordKey found is " + key);
+        pass self<-findSuccessor(key);
+    }
+
+    ChordNode findSuccessor(ChordKey key) {
+        if (self == successor) {
+            pass self;
+        }
+       // System.out.println("attempt for successor");
+        token ChordKey thisKey = self<-getNodeKey();
+        token ChordKey successorKey = successor<-getNodeKey();
+        pass self<-findSuccessor(key, thisKey, successorKey);
+    }
+
+    ChordNode findSuccessor(ChordKey key, ChordKey thisKey, ChordKey successorKey){    
+        if (key.isBetween(thisKey, successorKey)
+                || key.compareTo(successorKey) == 0) {
+      //      System.out.println("Successor is " + successor);
+            pass successor;
+        } else {
+            token ChordNode node = self<-closestPrecedingNode(key);
+            pass self<-findSuccessor(key, node); // Check this 
+        }
+    }
+
+    ChordNode findSuccessor(ChordKey key, ChordNode node){
+        if (node == self && successor != null) {
+            pass successor<-findSuccessor(key);
+        }
+        pass node<-findSuccessor(key);
+    }
+    
+    ack setSuccessorNode(Finger finger, ChordNode successorNode){
+        finger<-setNode(successorNode);
+    }
+
+    ChordNode closestPrecedingNode(ChordKey key) {
+        for (int i = 31; i >= 0; i--) {
+            token Finger finger = fingerTable<-getFinger(i);
+            token ChordNode node = finger<-getNode();
+            token ChordKey fingerKey = node<-getNodeKey(); //self<-closestNode(finger);
+            token ChordKey nodeKey = self<-getNodeKey();
+            self<-nextClosestNode(key, nodeKey, fingerKey);
+            if (success == true)
+                pass node;
+            }
+        pass self;
+    }
+
+    ack nextClosestNode(ChordKey key, ChordKey nodeKey, ChordKey fingerKey){
+        if (fingerKey.isBetween(nodeKey, key)) {
+            self.success= true;
+        }
+    }
+
+
+    String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("ChordNode");
+        sb.append("ID=" + nodeId);
+        sb.append(",KEY=" + nodeKey);
+        pass sb.toString();
+    }
+
+    ack printFingerTable() {
+        System.out.println("=======================================================");
+        System.out.println("FingerTable: " + self);
+        System.out.println("-------------------------------------------------------");
+        System.out.println("Predecessor: " + predecessor);
+        System.out.println("Successor: " + successor);
+        System.out.println("-------------------------------------------------------");
+    }
+
+    ack continuePrint(Finger finger/*, PrintStream out*/){
+        token ChordKey start = finger<-getStart();
+        token ChordNode node = finger<-getNode();
+        self<-continueToPrint(start, node/*, out*/);
+    }
+
+    ack continueToPrint(ChordKey start, ChordNode node/*, PrintStream out*/){
+        System.out.println(start + "\t" + node.getName());
+        System.out.println("=======================================================");
+    }
+
+    String getNodeId() {
+        pass nodeId;
+    }
+
+    ack setNodeId(String nodeId) {
+        self.nodeId = nodeId;
+    }
+
+    ChordKey getNodeKey() {
+        pass nodeKey;
+    }
+
+    ack setNodeKey(ChordKey nodeKey) {
+        self.nodeKey = nodeKey;     
+    }
+
+    ChordNode getPredecessor() {
+        pass predecessor;
+    }
+
+    ack setPredecessor(ChordNode predecessor) {
+        self.predecessor = predecessor;
+    }
+
+    ChordNode getSuccessor() {
+        pass successor;
+    }
+
+    ack setSuccessor(ChordNode successor) {
+        self.successor = successor;
+    }
+
+    FingerTable getFingerTable() {
+        pass fingerTable;
+    }
+
+    ack setFingerTable(FingerTable fingerTable) {
+        self.fingerTable = fingerTable;
+    }
+
+}

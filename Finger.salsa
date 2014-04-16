@@ -1,0 +1,30 @@
+module src;
+
+import object javasrc.ChordKey;
+
+behavior Finger {
+    ChordKey start;
+    ChordNode node;
+
+    Finger(ChordKey start, ChordNode node) {
+        self.start = start;
+        self.node = node;
+    }
+
+    ChordKey getStart() {
+        pass start;
+    }
+
+    ack setStart(ChordKey start) {
+        self.start = start;
+    }
+
+    ChordNode getNode() {
+        pass node;
+    }
+
+    ack setNode(ChordNode node) {
+        self.node = node;
+    }
+
+}

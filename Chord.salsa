@@ -1,0 +1,51 @@
+ module src;
+import object java.util.ArrayList;
+import object java.util.List;
+import object java.util.SortedMap;
+import object java.util.TreeMap;
+import object javasrc.ChordException;
+import object javasrc.ChordKey;
+
+behavior Chord{
+    List<ChordNode> nodeList = new ArrayList<ChordNode>();
+    SortedMap<ChordKey, ChordNode> sortedNodeMap = new TreeMap<ChordKey, ChordNode>();
+    Object[] sortedKeyArray;
+
+    ack createNode(ChordNode node) {//throws ChordException {
+        nodeList.add(node);
+        self<-createNode(node<-getNodeKey(),node) @
+        pass;
+    }
+    
+    ack getSortedNodeSize(){
+        System.out.println("Sorted Node size " + sortedNodeMap.size());
+    }
+
+    ack getListSize(){
+        System.out.println("List size " + nodeList.size());
+    }
+    
+    ack createNode(ChordKey nodeKey, ChordNode node){
+        if (sortedNodeMap.get(nodeKey) != null ) {
+            new ChordException("Duplicated Key: " + node);
+        }
+        sortedNodeMap.put(nodeKey, node);
+    }
+
+    ChordNode getNode(int i) {
+        pass (ChordNode) nodeList.get(i);
+    }
+
+    ChordNode getSortedNode(int i) {
+	System.out.println(" i = " + i);
+        if (sortedKeyArray == null) {
+            sortedKeyArray = sortedNodeMap.keySet().toArray();
+        }
+        pass (ChordNode) sortedNodeMap.get(sortedKeyArray[i]);
+    }
+
+    ack removeNode(ChordKey nodeKey){
+	sortedNodeMap.remove(nodeKey);
+	sortedKeyArray = sortedNodeMap.keySet().toArray();
+    }
+}

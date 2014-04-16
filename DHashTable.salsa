@@ -1,0 +1,328 @@
+module src;
+
+import salsa_lite.language.JoinDirector;
+import salsa_lite.runtime.io.StandardOutput;
+
+import object salsa_lite.runtime.TransportService;
+import object salsa_lite.common.HashCodeBuilder;
+
+import object javasrc.ChordKey;
+
+import object java.io.PrintStream;
+import object java.util.ArrayList;
+import object java.util.Hashtable;
+
+import object java.util.Scanner;
+import object java.io.FileNotFoundException;
+import object java.io.File;
+
+
+behavior DHashTable extends MobileActor{
+
+	StandardOutput origin_output;
+	int num_of_nodes;
+	long start;
+	Chord chord;
+	NameServer ns;
+	ChordNode precedingNode;
+	Hashtable<String, Integer> countItems = new Hashtable<String, Integer>();
+	DHashTable(StandardOutput origin_output) {
+		origin_output = origin_output;
+	}
+
+	DHashTable(ArrayList<String> hosts, ArrayList<Integer> ports) {
+		origin_output = new StandardOutput();
+		ns = self.getNameServer();
+		self<-process(ns, hosts, ports);
+	}
+
+	ack go() {
+		new StandardOutput()<-println("Hello from: " + self.getName() + "!") @
+			origin_output<-println("Remote hello from: " + self.getName() + "!");
+	}
+
+	ack put(String key, String value) {
+		ChordKey dataKey = new ChordKey(key);
+
+		if (chord != null) {
+			token ChordNode node = chord<-getNode(0);  
+			//token ChordNode responsibleNode = self<-findNode("Put in ", dataKey, node);
+			int nodeNumber = Integer.parseInt(dataKey.toString()) % num_of_nodes;
+			token ChordNode responsibleNode = chord<-getSortedNode(nodeNumber);
+			responsibleNode<-put(dataKey, value);
+		}  
+	    //  chord<-getSortedNodeSize() @
+	    //  pass;
+	}
+
+	ack lookUp(String key){
+		ChordKey dataKey = new ChordKey(key);
+		System.out.println("Search for key is " + key + " - " + dataKey);
+		new StandardOutput()<-println("Searching");
+		if (chord != null) {
+			token ChordNode node = chord<-getSortedNode(0);
+			self<-findNode("Found in ", dataKey, node);
+		}
+	}
+
+
+	ChordNode findNode(String message, ChordKey dataKey, ChordNode node){
+
+		if (node != null){
+			token ChordNode responsibleNode = node<-findSuccessor(dataKey);
+			//  self<-storedIn(message, dataKey, responsibleNode);
+			pass responsibleNode;
+		}else {
+			new StandardOutput()<-println (node + " >>>  Null node is rejected <<<");
+		}
+		pass null;
+	}
+
+
+	ack storedIn(String message, ChordKey key, ChordNode responsibleNode){
+		new StandardOutput()<-println(message + " Key " + key + " : Responsible node :" + responsibleNode);
+	}
+
+	DHashTable(String[] args) {
+		start = System.currentTimeMillis();
+		ns = self.getNameServer();
+		ArrayList<String> hosts = new ArrayList<String>();
+		ArrayList<Integer> ports = new ArrayList<Integer>();
+		if(args.length!=3){
+			System.err.println("Run with the parameters <num of nodes> <host> <port>");
+			System.exit(0);
+		}
+		num_of_nodes = Integer.parseInt(args[0]);
+		for (int i = 0; i < num_of_nodes; i++) {
+			hosts.add(args[1]);
+			ports.add(Integer.parseInt(args[2]) + i);
+		}
+		self<-process(ns, hosts, ports);
+	}
+
+	ack process(NameServer ns, ArrayList<String> hosts, ArrayList<Integer> ports) 
+	{
+		System.out.println("NameServer = " + ns);
+		chord = new Chord();
+		JoinDirector jd = new JoinDirector();
+
+		num_of_nodes = hosts.size();
+		token ChordNode rc;
+		System.out.println("host :" + hosts.size() + " num : " + num_of_nodes);
+		for (int i = 0; i < num_of_nodes; i++) {
+			new StandardOutput()<-println("finished go() at remote theater then migrate and go back to local theater.") @ 
+				chord<-getListSize() @
+				chord<-createNode(new ChordNode(new StandardOutput()) called ("rc_" + i) using (ns) at (hosts.get(i), ports.get(i))) @
+				new StandardOutput()<-println("Creating node " + (i + 1)) @  jd<-join();
+		}
+
+
+		jd<-resolveAfter(num_of_nodes) @
+			self<-sortNodes(chord) @
+			// chord<-getSortedNodeSize() @
+			self<-stabilizeNodes() @
+			self<-printChord(chord)@
+			self<-fixFingerTable(chord) @
+			self<-printFingers(chord) @
+			origin_output<-println("DONE")@
+			self<-test2()@
+			//            self<-put("find1","one")@
+			//            self<-put("remote2", "two")@
+			//            self<-put("thse ar so redi","three")@
+			//            self<-put("multiple", "four")@
+			//            self<-lookUp("multiple")@
+			            self<-removeNode()@
+			//self<-addNode("127.0.0.1", 4045, chord)@
+			pass;
+
+	}
+
+	ack sortNodes(Chord chord){
+		JoinDirector jd = new JoinDirector();
+		for (int i = 0; i < num_of_nodes; i++) {
+			self<-printMessage(i + " From sort Node : " , chord<-getSortedNode(i)) @ jd<-join();
+			System.out.println("Sort = " + i);
+		}
+		new StandardOutput()<-println("Nodes are sorted") @
+			pass jd<-resolveAfter(num_of_nodes);
+	}
+
+	ack stabilizeNodes(){
+		JoinDirector jd = new JoinDirector();
+		origin_output<-println("From Stabilize Node : ");
+		//         chord<-getSortedNodeSize()@
+		token ChordNode thisNode = chord<-getSortedNode(0);
+		token ChordNode rootNode = chord<-getSortedNode(0);
+		token ChordNode precedingNode = null;
+		token ChordNode node;
+		self<-printNode(" Root Node is ", thisNode)@
+			for (int i = 0; i < num_of_nodes-1; i++) {
+				node = chord<-getSortedNode(i+1)@
+					self<-printNode("From stabilize node: " ,node) @
+					thisNode<-setSuccessor(node) @
+					thisNode<-setPredecessor(precedingNode)@
+					precedingNode = thisNode@
+					thisNode = node@
+					node<-stabilize() @
+					self<-nodeStabilizer(precedingNode, node<-getSuccessor())@ jd<-join();
+			}
+		jd<-resolveAfter(num_of_nodes-2)@
+			thisNode<-setSuccessor(rootNode) @
+			thisNode<-setPredecessor(precedingNode)@
+			rootNode<-setPredecessor(thisNode)@
+			new StandardOutput()<-println("Chord ring is established.")@
+			pass;
+	}
+
+	ack setPreceding(ChordNode node){
+		precedingNode = node;
+	}
+	ack stabilizeNode(ChordNode node){
+		pass node<-stabilize();
+	}
+
+	ack fixFingerTable(Chord chord){
+		JoinDirector jd = new JoinDirector();
+		for (int i = 0; i < num_of_nodes; i++) {
+			if(chord!= null){
+				// self<-fixFingers(chord <- getSortedNode(i)) @ jd<-join();
+				chord <- getSortedNode(i)<-fixFingers() @ jd<-join();
+			}else
+				System.out.println("Chord is null");
+		}
+		new StandardOutput()<-println("Finger Tables are fixed.") @
+			pass jd<-resolveAfter(num_of_nodes);
+	}
+	/*
+	   ack fixFingers(ChordNode node){
+	   pass node<-fixFingers();
+	   }
+	 */
+	ack printFingers(Chord chord){
+		JoinDirector jd = new JoinDirector();
+		for (int i = 0; i < num_of_nodes; i++) {
+			chord<-getSortedNode(i)<-printFingerTable() @ jd<-join();
+		}
+		pass jd<-resolveAfter(num_of_nodes);
+	}
+
+	ack printChord(Chord chord){
+		new StandardOutput()<-println("Print Chord *****")@
+		chord<-getSortedNodeSize();
+			JoinDirector jd = new JoinDirector();
+		token ChordNode node;
+		System.out.println("Num of nodes " + num_of_nodes);
+		for (int i = 0; i < num_of_nodes; i++) {
+			self<-printMessage("Printing Chord: ",chord<-getSortedNode(i)) @
+				node = chord<-getSortedNode(i)@
+				self<-printMessage(i + " : Successor: ", node<-getSuccessor()) @
+				self<-printMessage(i + " : Pedecessor: ", node<-getPredecessor()) @ jd<-join();
+		}
+		jd<-resolveAfter(num_of_nodes)@
+			origin_output<-println("Printed")@
+			pass;
+	}
+	/*   ack printTable(ChordNode node){
+	     pass node<-printFingerTable();
+	     }
+	 */
+	ack printTime(){
+		long end = System.currentTimeMillis();
+		int interval = (int) (end - start);
+		System.err.println("Elapsed Time :" + interval / 1000 +
+				interval % 1000);
+	}
+
+	ack nodeStabilizer(ChordNode predecessor, ChordNode successor){
+		if (predecessor==null){
+			successor<-stabilize();
+		}else{
+			predecessor<-stabilize();
+		}
+
+	}
+	ack printNode(String message, ChordNode node){
+		//        origin_output<-print(message)@
+		//        origin_output<-println(node)@
+		//        pass;
+	}
+
+	ack printMessage(String message, ChordNode node){
+		origin_output<-println("---------------------------------------")@
+			//        origin_output<-print(message)@
+			origin_output<-println(message + " " + node)@
+			pass;
+	}
+
+	ack test1()
+	{
+		Scanner sc2 = null;
+		try {
+			sc2 = new Scanner(new File("dict.txt"));
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();  
+		}
+		while (sc2.hasNextLine()) {
+			String line = sc2.nextLine();
+			// System.out.println("1 " + line);
+			String[] arr = line.split("\t");
+			String firstWord = arr[0];
+			String theRest = arr[1];
+			self<-put(firstWord, theRest);
+		}
+	}
+
+	ack test2()
+	{
+		int i =0;
+		Scanner sc2 = null;
+		try {
+			sc2 = new Scanner(new File("wordlist.rtf"));
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();  
+		}
+		while (sc2.hasNextLine()) {
+			String line = sc2.nextLine();
+			i++;
+			// System.out.println("1 " + line);            
+			self<-put(line, line);
+		}
+		System.out.println("i = " + i);
+	}
+
+
+	ack addNode(String host, int port, Chord chord){
+		num_of_nodes += 1;
+		token ChordNode rootNode = chord<-getSortedNode(0)@
+			token ChordNode node = new ChordNode(new StandardOutput()) called ("rc_" + num_of_nodes) using (ns) at (host, port);
+		chord<-createNode(node) @
+			origin_output<-println("Node Adding : " + node)@
+			token ChordNode nearestNode = rootNode<-findSuccessor(node<-getNodeKey());
+
+		self<-printMessage("New node " , node);
+		self<-printMessage("Nearest node " , nearestNode);
+		pass;
+	}
+
+	ack removeNode(){
+		token ChordNode node = chord<-getSortedNode(2);
+		token ChordNode prede = node<-getPredecessor();
+		token ChordNode succe = node<-getSuccessor();
+
+		origin_output<-println("Removing Node")@
+			node<-setSuccessor(node)@
+			node<-setPredecessor(node)@
+			self<-printMessage("Successor is " , succe)@
+			self<-printMessage("Predecessor is " , prede)@
+			self<-printMessage("Successor null " , node<-getSuccessor())@
+			self<-printMessage("Predecessor null " , node<-getPredecessor())@
+			prede<-setSuccessor(succe)@
+			succe<-setPredecessor(prede)@
+			origin_output<-println("Printing Chord after Removing 2")@
+			self<-printChord(chord)@
+			num_of_nodes -= 1;
+			chord<-removeNode(node<-getNodeKey());
+			origin_output<-println("Printing Chord DONE after Removing 2")@
+			pass;
+	}
+}
